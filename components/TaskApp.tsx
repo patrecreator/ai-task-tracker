@@ -1,12 +1,14 @@
 "use client";
 
 import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
-import { IconTrash } from "@/components/icons";
+import { IconPencil, IconTrash } from "@/components/icons";
 import TaskEditorModal from "@/components/TaskEditorModal";
-import { deleteIconButtonClass, snoozeTomorrowButtonClass } from "@/components/task-ui-styles";
-import WeekBoard from "@/components/WeekBoard";
+import { deleteIconButtonClass, editIconButtonClass, snoozeTomorrowButtonClass } from "@/components/task-ui-styles";
+import WeekBoard, { type BoardDropTarget } from "@/components/WeekBoard";
 import { categoryLabel, categoryShort } from "@/lib/category";
+import { shiftDeadlineToKyivYmd } from "@/lib/kyiv-deadline-shift";
 import { priorityEmoji } from "@/lib/priority";
+import { deadlineKyivYmd } from "@/lib/week-columns";
 import type { Task } from "@/lib/task-model";
 
 export type { Task } from "@/lib/task-model";
@@ -217,6 +219,35 @@ export default function TaskApp() {
     }
   }
 
+  async function applyBoardDrop(taskId: string, target: BoardDropTarget) {
+    setError(null);
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task || task.done) return;
+    try {
+      if (target.type === "undated") {
+        if (!task.deadline) return;
+        const res = await fetch(`/api/tasks/${taskId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deadline: null }),
+        });
+        if (!res.ok) throw new Error(await readApiErrorMessage(res));
+      } else {
+        if (deadlineKyivYmd(task.deadline) === target.ymd) return;
+        const next = shiftDeadlineToKyivYmd(task.deadline, target.ymd);
+        const res = await fetch(`/api/tasks/${taskId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deadline: next.toISOString() }),
+        });
+        if (!res.ok) throw new Error(await readApiErrorMessage(res));
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не вдалося перенести задачу на борді");
+    }
+  }
+
   async function runSuggest() {
     setSuggestLoading(true);
     setSuggest(null);
@@ -287,6 +318,41 @@ export default function TaskApp() {
           і дедлайн.
         </p>
       </header>
+
+      <div className="flex flex-col gap-1.5 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-zinc-500">Вигляд:</span>
+          {(
+            [
+              ["list", "Список"],
+              ["week", "Борд: 7 днів"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              title={
+                key === "week"
+                  ? "Сітка тижня: 7 стовпців (пн–нд), дедлайни за часом Києва"
+                  : "Звичайний список задач"
+              }
+              onClick={() => setViewMode(key)}
+              className={`rounded-full px-3 py-1 ${
+                viewMode === key
+                  ? "bg-violet-700 text-white shadow-sm dark:bg-violet-400 dark:text-violet-950"
+                  : "bg-violet-100 text-violet-900 hover:bg-violet-200 dark:bg-violet-950 dark:text-violet-100 dark:hover:bg-violet-900"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {viewMode === "list" && (
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            Обери «Борд: 7 днів», щоб побачити сітку з семи стовпців (пн–нд, Київ) і перетягувати задачі між днями.
+          </p>
+        )}
+      </div>
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
         <label className="sr-only" htmlFor="task-input">
@@ -443,41 +509,6 @@ export default function TaskApp() {
         </select>
       </div>
 
-      <div className="flex flex-col gap-1.5 text-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-zinc-500">Вигляд:</span>
-          {(
-            [
-              ["list", "Список"],
-              ["week", "Борд: 7 днів"],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              title={
-                key === "week"
-                  ? "Сітка тижня: 7 стовпців (пн–нд), дедлайни за часом Києва"
-                  : "Звичайний список задач"
-              }
-              onClick={() => setViewMode(key)}
-              className={`rounded-full px-3 py-1 ${
-                viewMode === key
-                  ? "bg-violet-700 text-white shadow-sm dark:bg-violet-400 dark:text-violet-950"
-                  : "bg-violet-100 text-violet-900 hover:bg-violet-200 dark:bg-violet-950 dark:text-violet-100 dark:hover:bg-violet-900"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        {viewMode === "list" && (
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            Обери «Борд: 7 днів», щоб побачити сітку з семи стовпців (пн–нд, Київ).
-          </p>
-        )}
-      </div>
-
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-zinc-500">Категорія:</span>
         {(
@@ -529,6 +560,7 @@ export default function TaskApp() {
           onRemove={removeTask}
           onSnooze={snoozeTomorrow}
           onEditTask={setEditorTask}
+          onBoardDrop={applyBoardDrop}
         />
       ) : (
         <ul className="flex flex-col gap-3">
@@ -589,15 +621,17 @@ export default function TaskApp() {
                       Оригінал: {task.rawInput}
                     </p>
                   </div>
-                  <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
-                    <button
-                      type="button"
-                      onClick={() => setEditorTask(task)}
-                      className="text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-400"
-                    >
-                      Редагувати
-                    </button>
+                  <div className="flex shrink-0 flex-col items-end justify-start gap-2">
                     <div className="flex flex-wrap items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditorTask(task)}
+                        className={editIconButtonClass}
+                        aria-label="Редагувати задачу"
+                        title="Редагувати"
+                      >
+                        <IconPencil className="size-[1.15rem]" />
+                      </button>
                       {!task.done && (
                         <button
                           type="button"
