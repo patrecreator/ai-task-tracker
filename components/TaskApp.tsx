@@ -64,6 +64,8 @@ export default function TaskApp() {
     items: { taskId: string; reason: string }[];
   } | null>(null);
   const [suggestLoading, setSuggestLoading] = useState(false);
+  const [digest, setDigest] = useState<{ headline: string; bullets: string[] } | null>(null);
+  const [digestLoading, setDigestLoading] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -189,6 +191,32 @@ export default function TaskApp() {
     }
   }
 
+  async function runDigest() {
+    setDigestLoading(true);
+    setDigest(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/tasks/digest", { method: "POST" });
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
+      const data = (await res.json()) as {
+        headline?: string;
+        bullets?: string[];
+        error?: string;
+      };
+      if (data.error && !data.headline) {
+        throw new Error(data.error);
+      }
+      setDigest({
+        headline: data.headline ?? "План на сьогодні",
+        bullets: Array.isArray(data.bullets) ? data.bullets : [],
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не вдалося зібрати дайджест");
+    } finally {
+      setDigestLoading(false);
+    }
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-10">
       <header className="space-y-1">
@@ -226,10 +254,18 @@ export default function TaskApp() {
           <button
             type="button"
             onClick={() => void runSuggest()}
-            disabled={suggestLoading}
+            disabled={suggestLoading || digestLoading}
             className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-800 transition hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-100 dark:hover:bg-zinc-900"
           >
             {suggestLoading ? "Думаю…" : "Що робити зараз?"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void runDigest()}
+            disabled={digestLoading || suggestLoading}
+            className="rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-900 transition hover:bg-sky-100 disabled:opacity-50 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100 dark:hover:bg-sky-950"
+          >
+            {digestLoading ? "Збираю…" : "План на сьогодні"}
           </button>
         </div>
       </section>
@@ -252,6 +288,19 @@ export default function TaskApp() {
                 );
               })}
             </ol>
+          )}
+        </section>
+      )}
+
+      {digest && (
+        <section className="rounded-2xl border border-sky-200 bg-sky-50/90 p-4 text-sm text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-50">
+          <h2 className="text-base font-semibold">{digest.headline}</h2>
+          {digest.bullets.length > 0 && (
+            <ul className="mt-3 list-disc space-y-1.5 pl-5">
+              {digest.bullets.map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
+            </ul>
           )}
         </section>
       )}

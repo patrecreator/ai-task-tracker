@@ -188,7 +188,22 @@ export async function dailyDigest(
     return { headline: "Сьогодні вільний день 🎉", bullets: ["Активних задач немає."] };
   }
 
-  const openai = getClient();
+  if (!isOpenAiConfigured()) {
+    return {
+      headline: "План на сьогодні",
+      bullets: open.map((t) => t.title).slice(0, 7),
+    };
+  }
+
+  let openai: OpenAI;
+  try {
+    openai = getClient();
+  } catch {
+    return {
+      headline: "План на сьогодні",
+      bullets: open.map((t) => t.title).slice(0, 7),
+    };
+  }
   const body = open
     .map(
       (t) =>
@@ -203,15 +218,20 @@ Respond ONLY valid JSON:
 
 3–7 bullets, actionable, Ukrainian.`;
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: body },
-    ],
-    response_format: { type: "json_object" },
-    temperature: 0.4,
-  });
+  let completion;
+  try {
+    completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: body },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.4,
+    });
+  } catch {
+    return { headline: "План на сьогодні", bullets: open.map((t) => t.title).slice(0, 7) };
+  }
 
   const text = completion.choices[0]?.message?.content?.trim();
   if (!text) {
