@@ -19,8 +19,8 @@ export function IconPencil({ className = "size-5" }: { className?: string }) {
   );
 }
 
-/** Контур «обійми» — фігурка з руками навколо (stroke = currentColor). */
-export function IconHugOutline({ className = "size-6" }: { className?: string }) {
+/** Контурне серце (stroke = currentColor) — кнопка підтримки. */
+export function IconHeartOutline({ className = "size-6" }: { className?: string }) {
   return (
     <svg
       className={className}
@@ -29,13 +29,12 @@ export function IconHugOutline({ className = "size-6" }: { className?: string })
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
     >
-      <circle cx="12" cy="7" r="2.25" stroke="currentColor" strokeWidth={1.65} />
       <path
         stroke="currentColor"
         strokeWidth={1.65}
         strokeLinecap="round"
         strokeLinejoin="round"
-        d="M12 9.5v4M7 12.5c-2 2.5-2.5 6-1 8s4.5 1.5 5.5-1M17 12.5c2 2.5 2.5 6 1 8s-4.5 1.5-5.5-1"
+        d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"
       />
     </svg>
   );

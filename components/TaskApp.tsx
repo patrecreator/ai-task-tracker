@@ -1,7 +1,7 @@
 "use client";
 
 import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
-import { IconHugOutline, IconPencil, IconTrash } from "@/components/icons";
+import { IconHeartOutline, IconPencil, IconTrash } from "@/components/icons";
 import SupportHugModal from "@/components/SupportHugModal";
 import TaskEditorModal from "@/components/TaskEditorModal";
 import { deleteIconButtonClass, editIconButtonClass, snoozeTomorrowButtonClass } from "@/components/task-ui-styles";
@@ -393,7 +393,7 @@ export default function TaskApp() {
             }}
             className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-violet-500 bg-violet-50 text-violet-600 shadow-sm transition hover:border-violet-600 hover:bg-violet-100 hover:text-violet-800 dark:border-violet-400 dark:bg-violet-950/60 dark:text-violet-300 dark:hover:border-violet-300 dark:hover:bg-violet-900/70 dark:hover:text-violet-100"
           >
-            <IconHugOutline className="size-[1.35rem]" />
+            <IconHeartOutline className="size-[1.35rem]" />
           </button>
         </div>
         {viewMode === "list" && (
