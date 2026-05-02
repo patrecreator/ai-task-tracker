@@ -1,20 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
+import { IconTrash } from "@/components/icons";
+import TaskEditorModal from "@/components/TaskEditorModal";
+import { deleteIconButtonClass, snoozeTomorrowButtonClass } from "@/components/task-ui-styles";
+import WeekBoard from "@/components/WeekBoard";
+import { categoryLabel, categoryShort } from "@/lib/category";
 import { priorityEmoji } from "@/lib/priority";
+import type { Task } from "@/lib/task-model";
 
-export type Task = {
-  id: string;
-  rawInput: string;
-  title: string;
-  priority: string;
-  deadline: string | null;
-  done: boolean;
-  createdAt: string;
-};
+export type { Task } from "@/lib/task-model";
 
 type Filter = "all" | "active" | "done";
 type Sort = "created" | "deadline" | "priority";
+type CategoryFilter = "all" | "work" | "personal" | "learning";
+type ViewMode = "list" | "week";
 
 function formatDeadline(iso: string | null): string {
   if (!iso) return "без дедлайну";
@@ -33,8 +33,7 @@ function isOverdue(deadline: string | null, done: boolean): boolean {
   return new Date(deadline).getTime() < Date.now();
 }
 
-async function readApiErrorMessage(res: Response): Promise<string> {
-  const text = await res.text();
+function messageFromApiBodyText(text: string, statusText: string, status: number): string {
   try {
     const j = JSON.parse(text) as {
       error?: string;
@@ -46,19 +45,24 @@ async function readApiErrorMessage(res: Response): Promise<string> {
   } catch {
     /* ignore */
   }
-  return text.trim() || res.statusText || `Помилка ${res.status}`;
+  return text.trim() || statusText || `Помилка ${status}`;
+}
+
+async function readApiErrorMessage(res: Response): Promise<string> {
+  const text = await res.text();
+  return messageFromApiBodyText(text, res.statusText, res.status);
 }
 
 export default function TaskApp() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [input, setInput] = useState("");
   const [filter, setFilter] = useState<Filter>("active");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [sort, setSort] = useState<Sort>("created");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editTitle, setEditTitle] = useState("");
+  const [editorTask, setEditorTask] = useState<Task | null>(null);
   const [suggest, setSuggest] = useState<{
     intro: string;
     items: { taskId: string; reason: string }[];
@@ -66,12 +70,42 @@ export default function TaskApp() {
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [digest, setDigest] = useState<{ headline: string; bullets: string[] } | null>(null);
   const [digestLoading, setDigestLoading] = useState(false);
+  const [weeklyCapacity, setWeeklyCapacity] = useState(40);
+  const [overload, setOverload] = useState<{
+    used: number;
+    capacity: number;
+    newHours: number;
+  } | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [weekOffset, setWeekOffset] = useState(0);
+
+  useEffect(() => {
+    startTransition(() => {
+      try {
+        const raw = localStorage.getItem("task_tracker_weekly_hours");
+        const v = parseFloat(raw ?? "");
+        if (Number.isFinite(v) && v > 0) setWeeklyCapacity(Math.min(168, v));
+      } catch {
+        /* ignore */
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("task_tracker_weekly_hours", String(weeklyCapacity));
+    } catch {
+      /* ignore */
+    }
+  }, [weeklyCapacity]);
 
   const load = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch(`/api/tasks?filter=${filter}&sort=${sort}`);
+      const res = await fetch(
+        `/api/tasks?filter=${filter}&sort=${sort}&category=${categoryFilter}`,
+      );
       if (!res.ok) throw new Error(await readApiErrorMessage(res));
       const data = (await res.json()) as Task[];
       setTasks(data);
@@ -80,7 +114,7 @@ export default function TaskApp() {
     } finally {
       setLoading(false);
     }
-  }, [filter, sort]);
+  }, [filter, sort, categoryFilter]);
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -89,23 +123,53 @@ export default function TaskApp() {
     return () => window.clearTimeout(t);
   }, [load]);
 
+  useEffect(() => {
+    if (!editorTask) return;
+    if (!tasks.some((t) => t.id === editorTask.id)) {
+      startTransition(() => setEditorTask(null));
+    }
+  }, [tasks, editorTask]);
+
   const activeCount = useMemo(
     () => tasks.filter((t) => !t.done).length,
     [tasks],
   );
 
-  async function addTask() {
+  async function addTask(force = false) {
     const raw = input.trim();
     if (!raw) return;
     setSaving(true);
     setError(null);
+    setOverload(null);
     try {
       const res = await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rawInput: raw }),
+        body: JSON.stringify({
+          rawInput: raw,
+          weeklyCapacityHours: weeklyCapacity,
+          ...(force ? { force: true } : {}),
+        }),
       });
-      if (!res.ok) throw new Error(await readApiErrorMessage(res));
+      const text = await res.text();
+      if (res.status === 409 && !force) {
+        try {
+          const data = JSON.parse(text) as { code?: string; usedHours?: number; capacity?: number; newHours?: number };
+          if (data.code === "WEEK_OVERLOAD") {
+            setOverload({
+              used: data.usedHours ?? 0,
+              capacity: data.capacity ?? weeklyCapacity,
+              newHours: data.newHours ?? 0,
+            });
+            return;
+          }
+        } catch {
+          /* fall through */
+        }
+      }
+      if (!res.ok) {
+        throw new Error(messageFromApiBodyText(text, res.statusText, res.status));
+      }
       setInput("");
       await load();
     } catch (e) {
@@ -150,23 +214,6 @@ export default function TaskApp() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не вдалося видалити задачу");
-    }
-  }
-
-  async function saveTitle(id: string) {
-    const title = editTitle.trim();
-    if (!title) return;
-    try {
-      const res = await fetch(`/api/tasks/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title }),
-      });
-      if (!res.ok) throw new Error(await readApiErrorMessage(res));
-      setEditingId(null);
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Не вдалося зберегти назву");
     }
   }
 
@@ -218,7 +265,19 @@ export default function TaskApp() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-10">
+    <div
+      className={`mx-auto flex w-full flex-col gap-6 px-4 py-10 ${
+        viewMode === "week" ? "max-w-6xl" : "max-w-2xl"
+      }`}
+    >
+      <TaskEditorModal
+        key={editorTask?.id ?? "closed"}
+        task={editorTask}
+        open={editorTask !== null}
+        onClose={() => setEditorTask(null)}
+        onSaved={load}
+        onError={setError}
+      />
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
           AI таск-трекер
@@ -242,6 +301,23 @@ export default function TaskApp() {
           onChange={(e) => setInput(e.target.value)}
           disabled={saving}
         />
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-zinc-600 dark:text-zinc-400">
+          <label className="flex items-center gap-2">
+            <span className="whitespace-nowrap">Ліміт год/тиждень (пн–нд, Київ)</span>
+            <input
+              type="number"
+              min={1}
+              max={168}
+              step={1}
+              value={weeklyCapacity}
+              onChange={(e) => {
+                const v = parseInt(e.target.value, 10);
+                if (Number.isFinite(v)) setWeeklyCapacity(Math.min(168, Math.max(1, v)));
+              }}
+              className="w-16 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+            />
+          </label>
+        </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -269,6 +345,34 @@ export default function TaskApp() {
           </button>
         </div>
       </section>
+
+      {overload && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-50">
+          <p className="font-medium">Перевантаження тижня</p>
+          <p className="mt-2 text-amber-900/90 dark:text-amber-100/90">
+            Вже ~{overload.used.toFixed(1)} год з {overload.capacity} год (за дедлайнами в поточному тижні, пн–нд за Києвом). Нова задача ~{overload.newHours.toFixed(1)} год.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setOverload(null);
+                void addTask(true);
+              }}
+              className="rounded-full bg-amber-700 px-4 py-2 text-xs font-medium text-white hover:bg-amber-800 dark:bg-amber-600 dark:hover:bg-amber-500"
+            >
+              Додати все одно
+            </button>
+            <button
+              type="button"
+              onClick={() => setOverload(null)}
+              className="rounded-full border border-amber-400 px-4 py-2 text-xs font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-100 dark:hover:bg-amber-900/50"
+            >
+              Скасувати
+            </button>
+          </div>
+        </div>
+      )}
 
       {suggest && (
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 text-sm text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-50">
@@ -339,6 +443,66 @@ export default function TaskApp() {
         </select>
       </div>
 
+      <div className="flex flex-col gap-1.5 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-zinc-500">Вигляд:</span>
+          {(
+            [
+              ["list", "Список"],
+              ["week", "Борд: 7 днів"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              title={
+                key === "week"
+                  ? "Сітка тижня: 7 стовпців (пн–нд), дедлайни за часом Києва"
+                  : "Звичайний список задач"
+              }
+              onClick={() => setViewMode(key)}
+              className={`rounded-full px-3 py-1 ${
+                viewMode === key
+                  ? "bg-violet-700 text-white shadow-sm dark:bg-violet-400 dark:text-violet-950"
+                  : "bg-violet-100 text-violet-900 hover:bg-violet-200 dark:bg-violet-950 dark:text-violet-100 dark:hover:bg-violet-900"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {viewMode === "list" && (
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            Обери «Борд: 7 днів», щоб побачити сітку з семи стовпців (пн–нд, Київ).
+          </p>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-zinc-500">Категорія:</span>
+        {(
+          [
+            ["all", "Усі"],
+            ["work", "Робота"],
+            ["personal", "Особисте"],
+            ["learning", "Навчання"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setCategoryFilter(key)}
+            className={`rounded-full px-3 py-1 ${
+              categoryFilter === key
+                ? "bg-sky-800 text-white dark:bg-sky-300 dark:text-sky-950"
+                : "bg-sky-100 text-sky-900 hover:bg-sky-200 dark:bg-sky-950 dark:text-sky-100 dark:hover:bg-sky-900"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {error && (
         <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/50 dark:text-red-200">
           {error}
@@ -356,10 +520,21 @@ export default function TaskApp() {
             Тут з’являться задачі. Додай першу зліва в полі вище.
           </p>
         </div>
+      ) : viewMode === "week" ? (
+        <WeekBoard
+          tasks={tasks}
+          weekOffset={weekOffset}
+          onWeekOffset={setWeekOffset}
+          onToggleDone={toggleDone}
+          onRemove={removeTask}
+          onSnooze={snoozeTomorrow}
+          onEditTask={setEditorTask}
+        />
       ) : (
         <ul className="flex flex-col gap-3">
           {tasks.map((task) => {
             const overdue = isOverdue(task.deadline, task.done);
+            const cat = task.category ?? "personal";
             return (
               <li
                 key={task.id}
@@ -378,75 +553,70 @@ export default function TaskApp() {
                     aria-label="Позначити виконаною"
                   />
                   <div className="min-w-0 flex-1 space-y-1">
-                    {editingId === task.id ? (
-                      <div className="flex flex-wrap gap-2">
-                        <input
-                          className="min-w-[12rem] flex-1 rounded-lg border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-600 dark:bg-zinc-900"
-                          value={editTitle}
-                          onChange={(e) => setEditTitle(e.target.value)}
-                          autoFocus
-                        />
-                        <button
-                          type="button"
-                          className="rounded-lg bg-zinc-900 px-3 py-1 text-xs text-white dark:bg-zinc-100 dark:text-zinc-900"
-                          onClick={() => void saveTitle(task.id)}
-                        >
-                          Зберегти
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded-lg border border-zinc-300 px-3 py-1 text-xs dark:border-zinc-600"
-                          onClick={() => setEditingId(null)}
-                        >
-                          Скасувати
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        className={`text-left text-base font-medium ${
-                          task.done
-                            ? "text-zinc-400 line-through"
-                            : "text-zinc-900 dark:text-zinc-50"
-                        }`}
-                        onClick={() => {
-                          setEditingId(task.id);
-                          setEditTitle(task.title);
-                        }}
-                      >
-                        {task.title}
-                      </button>
-                    )}
+                    <p
+                      className={`text-left text-base font-medium ${
+                        task.done
+                          ? "text-zinc-400 line-through"
+                          : "text-zinc-900 dark:text-zinc-50"
+                      }`}
+                    >
+                      {task.title}
+                    </p>
                     <p className="text-xs text-zinc-500">
-                      {priorityEmoji(task.priority)} {task.priority} · дедлайн:{" "}
+                      {priorityEmoji(task.priority)} {task.priority} · {categoryShort(cat)}{" "}
+                      {categoryLabel(cat)} · дедлайн:{" "}
                       <span className={overdue ? "font-semibold text-red-600 dark:text-red-400" : ""}>
                         {formatDeadline(task.deadline)}
                       </span>
                       {overdue && !task.done && (
                         <span className="ml-1 text-red-600 dark:text-red-400">(прострочено)</span>
                       )}
+                      {task.estimatedHours != null && (
+                        <span className="ml-1 text-zinc-600 dark:text-zinc-300">
+                          · план ~{task.estimatedHours} год
+                        </span>
+                      )}
+                      {task.spentHours != null && (
+                        <span className="ml-1 text-zinc-600 dark:text-zinc-300">
+                          · витрачено {task.spentHours} год
+                        </span>
+                      )}
                     </p>
+                    {task.description ? (
+                      <p className="line-clamp-3 text-xs text-zinc-600 dark:text-zinc-400">{task.description}</p>
+                    ) : null}
                     <p className="text-xs text-zinc-400 line-clamp-2">
                       Оригінал: {task.rawInput}
                     </p>
                   </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-2">
-                    {!task.done && (
-                      <button
-                        type="button"
-                        onClick={() => void snoozeTomorrow(task)}
-                        className="text-xs text-amber-700 hover:underline dark:text-amber-400"
-                      >
-                        До завтра
-                      </button>
-                    )}
+                  <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
                     <button
                       type="button"
-                      onClick={() => void removeTask(task.id)}
-                      className="text-xs text-red-600 hover:underline dark:text-red-400"
+                      onClick={() => setEditorTask(task)}
+                      className="text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-400"
                     >
-                      Видалити
+                      Редагувати
                     </button>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      {!task.done && (
+                        <button
+                          type="button"
+                          onClick={() => void snoozeTomorrow(task)}
+                          className={snoozeTomorrowButtonClass}
+                        >
+                          До завтра
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void removeTask(task.id)}
+                        className={deleteIconButtonClass}
+                        aria-label="Видалити задачу"
+                        title="Видалити"
+                      >
+                        <IconTrash className="size-[1.15rem]" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </li>

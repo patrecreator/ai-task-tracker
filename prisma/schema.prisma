@@ -12,7 +12,11 @@ model Task {
   rawInput  String
   title     String
   priority  String
-  deadline  DateTime?
-  done      Boolean   @default(false)
+  category        String    @default("personal")
+  estimatedHours  Float?
+  spentHours      Float?
+  deadline        DateTime?
+  description     String?   @db.Text
+  done            Boolean   @default(false)
   createdAt DateTime  @default(now())
 }
