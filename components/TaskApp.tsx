@@ -1,7 +1,8 @@
 "use client";
 
 import { startTransition, useCallback, useEffect, useMemo, useState } from "react";
-import { IconPencil, IconTrash } from "@/components/icons";
+import { IconHugOutline, IconPencil, IconTrash } from "@/components/icons";
+import SupportHugModal from "@/components/SupportHugModal";
 import TaskEditorModal from "@/components/TaskEditorModal";
 import { deleteIconButtonClass, editIconButtonClass, snoozeTomorrowButtonClass } from "@/components/task-ui-styles";
 import WeekBoard, { type BoardDropTarget } from "@/components/WeekBoard";
@@ -84,6 +85,7 @@ export default function TaskApp() {
     newHours: number;
   } | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [supportOpen, setSupportOpen] = useState(false);
   const [weekOffset, setWeekOffset] = useState(0);
   const [wellnessMounted, setWellnessMounted] = useState(false);
   const [rescheduleMoveCount7d, setRescheduleMoveCount7d] = useState(0);
@@ -335,6 +337,7 @@ export default function TaskApp() {
         onSaved={load}
         onError={setError}
       />
+      <SupportHugModal open={supportOpen} onClose={() => setSupportOpen(false)} />
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
           TaskBasket
@@ -346,32 +349,43 @@ export default function TaskApp() {
       </header>
 
       <div className="flex flex-col gap-1.5 text-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-zinc-500">Вигляд:</span>
-          {(
-            [
-              ["list", "Список"],
-              ["week", "Борд: 7 днів"],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              title={
-                key === "week"
-                  ? "Сітка тижня: 7 стовпців (пн–нд), дедлайни за часом Києва"
-                  : "Звичайний список задач"
-              }
-              onClick={() => setViewMode(key)}
-              className={`rounded-full px-3 py-1 ${
-                viewMode === key
-                  ? "bg-violet-700 text-white shadow-sm dark:bg-violet-400 dark:text-violet-950"
-                  : "bg-violet-100 text-violet-900 hover:bg-violet-200 dark:bg-violet-950 dark:text-violet-100 dark:hover:bg-violet-900"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-zinc-500">Вигляд:</span>
+            {(
+              [
+                ["list", "Список"],
+                ["week", "Борд: 7 днів"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                title={
+                  key === "week"
+                    ? "Сітка тижня: 7 стовпців (пн–нд), дедлайни за часом Києва"
+                    : "Звичайний список задач"
+                }
+                onClick={() => setViewMode(key)}
+                className={`rounded-full px-3 py-1 ${
+                  viewMode === key
+                    ? "bg-violet-700 text-white shadow-sm dark:bg-violet-400 dark:text-violet-950"
+                    : "bg-violet-100 text-violet-900 hover:bg-violet-200 dark:bg-violet-950 dark:text-violet-100 dark:hover:bg-violet-900"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            title="Отримати підтримку"
+            aria-label="Отримати підтримку"
+            onClick={() => setSupportOpen(true)}
+            className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-violet-500 bg-violet-50 text-violet-600 shadow-sm transition hover:border-violet-600 hover:bg-violet-100 hover:text-violet-800 dark:border-violet-400 dark:bg-violet-950/60 dark:text-violet-300 dark:hover:border-violet-300 dark:hover:bg-violet-900/70 dark:hover:text-violet-100"
+          >
+            <IconHugOutline className="size-[1.35rem]" />
+          </button>
         </div>
         {viewMode === "list" && (
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
@@ -664,9 +678,6 @@ export default function TaskApp() {
                     {task.description ? (
                       <p className="line-clamp-3 text-xs text-zinc-600 dark:text-zinc-400">{task.description}</p>
                     ) : null}
-                    <p className="text-xs text-zinc-400 line-clamp-2">
-                      Оригінал: {task.rawInput}
-                    </p>
                   </div>
                   <div className="flex shrink-0 flex-col items-end justify-start gap-2">
                     <div className="flex flex-wrap items-center justify-end gap-2">

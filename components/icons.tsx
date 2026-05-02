@@ -19,6 +19,28 @@ export function IconPencil({ className = "size-5" }: { className?: string }) {
   );
 }
 
+/** Контур «обійми» — фігурка з руками навколо (stroke = currentColor). */
+export function IconHugOutline({ className = "size-6" }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+    >
+      <circle cx="12" cy="7" r="2.25" stroke="currentColor" strokeWidth={1.65} />
+      <path
+        stroke="currentColor"
+        strokeWidth={1.65}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 9.5v4M7 12.5c-2 2.5-2.5 6-1 8s4.5 1.5 5.5-1M17 12.5c2 2.5 2.5 6 1 8s-4.5 1.5-5.5-1"
+      />
+    </svg>
+  );
+}
+
 /** Контурна іконка кошика (stroke = currentColor). */
 export function IconTrash({ className = "size-5" }: { className?: string }) {
   return (
