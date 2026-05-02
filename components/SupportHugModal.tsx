@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect } from "react";
+import { SUPPORT_MESSAGES } from "@/lib/support-messages";
 
 type Props = {
   open: boolean;
+  messageIndex: number;
   onClose: () => void;
 };
 
-export default function SupportHugModal({ open, onClose }: Props) {
+export default function SupportHugModal({ open, messageIndex, onClose }: Props) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -18,6 +20,12 @@ export default function SupportHugModal({ open, onClose }: Props) {
   }, [open, onClose]);
 
   if (!open) return null;
+
+  const safeIndex =
+    Number.isInteger(messageIndex) && messageIndex >= 0 && messageIndex < SUPPORT_MESSAGES.length
+      ? messageIndex
+      : 0;
+  const msg = SUPPORT_MESSAGES[safeIndex];
 
   return (
     <div
@@ -38,16 +46,16 @@ export default function SupportHugModal({ open, onClose }: Props) {
           id="support-hug-title"
           className="text-lg font-semibold tracking-tight text-violet-900 dark:text-violet-100"
         >
-          Тобі важко з обсягом — і це нормально
+          {msg.title}
         </h2>
-        <p className="mt-3 text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">
-          Коли задач здається забагато, легко почуватися винним або «недостатнім». Ти не зобов’язаний(-а) встигати
-          все одночасно: список — це лише план, а не оцінка твоєї цінності.
-        </p>
-        <p className="mt-2 text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">
-          Дозволь собі паузу, перенеси дрібниці або попроси про допомогу. Маленький крок сьогодні — уже перемога.
-          Обійми (навіть уявні) — теж важливі.
-        </p>
+        {msg.paragraphs.map((paragraph, i) => (
+          <p
+            key={i}
+            className={`text-sm leading-relaxed text-zinc-700 dark:text-zinc-300 ${i === 0 ? "mt-3" : "mt-2"}`}
+          >
+            {paragraph}
+          </p>
+        ))}
         <button
           type="button"
           onClick={onClose}

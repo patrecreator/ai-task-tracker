@@ -7,6 +7,7 @@ import TaskEditorModal from "@/components/TaskEditorModal";
 import { deleteIconButtonClass, editIconButtonClass, snoozeTomorrowButtonClass } from "@/components/task-ui-styles";
 import WeekBoard, { type BoardDropTarget } from "@/components/WeekBoard";
 import { categoryLabel, categoryShort } from "@/lib/category";
+import { SUPPORT_MESSAGE_COUNT } from "@/lib/support-messages";
 import { shiftDeadlineToKyivYmd } from "@/lib/kyiv-deadline-shift";
 import { priorityEmoji } from "@/lib/priority";
 import {
@@ -86,6 +87,7 @@ export default function TaskApp() {
   } | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [supportOpen, setSupportOpen] = useState(false);
+  const [supportMessageIndex, setSupportMessageIndex] = useState(0);
   const [weekOffset, setWeekOffset] = useState(0);
   const [wellnessMounted, setWellnessMounted] = useState(false);
   const [rescheduleMoveCount7d, setRescheduleMoveCount7d] = useState(0);
@@ -337,7 +339,11 @@ export default function TaskApp() {
         onSaved={load}
         onError={setError}
       />
-      <SupportHugModal open={supportOpen} onClose={() => setSupportOpen(false)} />
+      <SupportHugModal
+        open={supportOpen}
+        messageIndex={supportMessageIndex}
+        onClose={() => setSupportOpen(false)}
+      />
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
           TaskBasket
@@ -381,7 +387,10 @@ export default function TaskApp() {
             type="button"
             title="Отримати підтримку"
             aria-label="Отримати підтримку"
-            onClick={() => setSupportOpen(true)}
+            onClick={() => {
+              setSupportMessageIndex(Math.floor(Math.random() * SUPPORT_MESSAGE_COUNT));
+              setSupportOpen(true);
+            }}
             className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-violet-500 bg-violet-50 text-violet-600 shadow-sm transition hover:border-violet-600 hover:bg-violet-100 hover:text-violet-800 dark:border-violet-400 dark:bg-violet-950/60 dark:text-violet-300 dark:hover:border-violet-300 dark:hover:bg-violet-900/70 dark:hover:text-violet-100"
           >
             <IconHugOutline className="size-[1.35rem]" />
