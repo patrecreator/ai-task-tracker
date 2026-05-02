@@ -8,6 +8,11 @@ import WeekBoard, { type BoardDropTarget } from "@/components/WeekBoard";
 import { categoryLabel, categoryShort } from "@/lib/category";
 import { shiftDeadlineToKyivYmd } from "@/lib/kyiv-deadline-shift";
 import { priorityEmoji } from "@/lib/priority";
+import {
+  getRescheduleMovesLast7Days,
+  isHeavyWeekPlan,
+  recordRescheduleMove,
+} from "@/lib/wellness";
 import { deadlineKyivYmd } from "@/lib/week-columns";
 import type { Task } from "@/lib/task-model";
 
@@ -80,6 +85,15 @@ export default function TaskApp() {
   } | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [weekOffset, setWeekOffset] = useState(0);
+  const [wellnessMounted, setWellnessMounted] = useState(false);
+  const [rescheduleMoveCount7d, setRescheduleMoveCount7d] = useState(0);
+
+  useEffect(() => {
+    startTransition(() => {
+      setWellnessMounted(true);
+      setRescheduleMoveCount7d(getRescheduleMovesLast7Days());
+    });
+  }, []);
 
   useEffect(() => {
     startTransition(() => {
@@ -136,6 +150,12 @@ export default function TaskApp() {
     () => tasks.filter((t) => !t.done).length,
     [tasks],
   );
+
+  const wellnessHints = useMemo(() => {
+    const heavy = isHeavyWeekPlan(tasks, weeklyCapacity);
+    const showRescheduleNudge = rescheduleMoveCount7d >= 3 && !heavy.show;
+    return { heavy, showRescheduleNudge };
+  }, [tasks, weeklyCapacity, rescheduleMoveCount7d]);
 
   async function addTask(force = false) {
     const raw = input.trim();
@@ -203,6 +223,8 @@ export default function TaskApp() {
         body: JSON.stringify({ snoozeTomorrow: true }),
       });
       if (!res.ok) throw new Error(await readApiErrorMessage(res));
+      recordRescheduleMove();
+      setRescheduleMoveCount7d(getRescheduleMovesLast7Days());
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не вдалося відкласти задачу");
@@ -241,6 +263,10 @@ export default function TaskApp() {
           body: JSON.stringify({ deadline: next.toISOString() }),
         });
         if (!res.ok) throw new Error(await readApiErrorMessage(res));
+      }
+      if (target.type === "day") {
+        recordRescheduleMove();
+        setRescheduleMoveCount7d(getRescheduleMovesLast7Days());
       }
       await load();
     } catch (e) {
@@ -311,11 +337,11 @@ export default function TaskApp() {
       />
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-          AI таск-трекер
+          TaskBasket
         </h1>
         <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Напиши задачу як колезі в Slack — штучний інтелект розбере назву, пріоритет
-          і дедлайн.
+          Кинь задачі в «кошик» звичайною мовою — AI розкладе назву, пріоритет і дедлайн. Тижневий борд і
+          переноси — поруч.
         </p>
       </header>
 
@@ -538,6 +564,27 @@ export default function TaskApp() {
         <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/50 dark:text-red-200">
           {error}
         </p>
+      )}
+
+      {wellnessMounted && !loading && wellnessHints.heavy.show && (
+        <div className="rounded-2xl border border-amber-200/90 bg-amber-50/90 px-4 py-3 text-sm text-amber-950 shadow-sm dark:border-amber-800/50 dark:bg-amber-950/35 dark:text-amber-50">
+          <p className="font-medium text-amber-900 dark:text-amber-100">Про план на тиждень</p>
+          <p className="mt-2 leading-relaxed text-amber-900/95 dark:text-amber-100/90">
+            Ти молодець, що береш на себе стільки на тиждень — це сміливість і небайдужість до своїх цілей.
+            І з турботою нагадаю: залиш собі місце на сон, паузи й «нічого не робити», щоб усе встигнути вчасно й
+            якісно, без вигорання.
+          </p>
+        </div>
+      )}
+
+      {wellnessMounted && !loading && wellnessHints.showRescheduleNudge && (
+        <div className="rounded-2xl border border-emerald-200/90 bg-emerald-50/85 px-4 py-3 text-sm text-emerald-950 shadow-sm dark:border-emerald-800/50 dark:bg-emerald-950/35 dark:text-emerald-50">
+          <p className="font-medium text-emerald-900 dark:text-emerald-100">Про переноси</p>
+          <p className="mt-2 leading-relaxed text-emerald-900/95 dark:text-emerald-100/90">
+            Бачу, ти доволі часто підлаштовуєш дедлайни — це нормально: плани живуть разом із життям, а не застигають у
+            камені. Ти впораєшся!
+          </p>
+        </div>
       )}
 
       {loading ? (

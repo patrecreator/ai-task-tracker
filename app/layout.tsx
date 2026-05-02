@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI таск-трекер",
-  description: "Додавай задачі природньою мовою — AI структурує пріоритет і дедлайн.",
+  title: "TaskBasket",
+  description:
+    "Drop tasks in plain language — AI sorts priority and deadlines. Week board, snooze, and gentle nudges.",
 };
 
 export default function RootLayout({
