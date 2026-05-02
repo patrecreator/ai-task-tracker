@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getKyivTomorrowNineAmUtc } from "@/lib/kyiv-time";
 import { normalizePriority } from "@/lib/priority";
 
 export const runtime = "nodejs";
@@ -28,6 +29,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     } else if (typeof body.deadline === "string") {
       const d = new Date(body.deadline);
       data.deadline = Number.isNaN(d.getTime()) ? null : d;
+    }
+
+    if (body.snoozeTomorrow === true) {
+      data.deadline = getKyivTomorrowNineAmUtc();
     }
 
     if (Object.keys(data).length === 0) {

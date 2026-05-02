@@ -127,6 +127,20 @@ export default function TaskApp() {
     }
   }
 
+  async function snoozeTomorrow(task: Task) {
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ snoozeTomorrow: true }),
+      });
+      if (!res.ok) throw new Error(await readApiErrorMessage(res));
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не вдалося відкласти задачу");
+    }
+  }
+
   async function removeTask(id: string) {
     try {
       const res = await fetch(`/api/tasks/${id}`, { method: "DELETE" });
@@ -367,13 +381,24 @@ export default function TaskApp() {
                       Оригінал: {task.rawInput}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void removeTask(task.id)}
-                    className="shrink-0 text-xs text-red-600 hover:underline dark:text-red-400"
-                  >
-                    Видалити
-                  </button>
+                  <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-2">
+                    {!task.done && (
+                      <button
+                        type="button"
+                        onClick={() => void snoozeTomorrow(task)}
+                        className="text-xs text-amber-700 hover:underline dark:text-amber-400"
+                      >
+                        До завтра
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void removeTask(task.id)}
+                      className="text-xs text-red-600 hover:underline dark:text-red-400"
+                    >
+                      Видалити
+                    </button>
+                  </div>
                 </div>
               </li>
             );
